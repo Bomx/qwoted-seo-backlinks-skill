@@ -1,0 +1,5 @@
+# Runtime dependencies for the Qwoted SEO Backlinks skill.
+# Pinned to floors only so users always get the latest patch versions.
+requests>=2.31.0
+python-dotenv>=1.0.0
+playwright>=1.40.0

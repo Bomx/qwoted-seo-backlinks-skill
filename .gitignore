@@ -1,0 +1,30 @@
+# --- Auth & local state (NEVER commit) -----------------------------
+.env
+.env.*
+!.env.example
+qwoted_sessions/
+qwoted_pitches/
+qwoted_opportunities/
+*.cookies.json
+storage_state.json
+
+# --- Python --------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# --- Editors / OS --------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Logs / scratch ------------------------------------------------
+*.log
+.tmp/
+tmp/
