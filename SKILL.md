@@ -84,25 +84,84 @@ Check first:
 python3 qwoted_profile.py --action get
 ```
 
-Parse the `RESULT:` JSON. If `ready_to_pitch == true`, skip to Stage 2.
+Parse the `RESULT:` JSON.
 
-If `ready_to_pitch == false`, gather the user's details (ask them
-politely; don't make them up) and create the persona:
+* If `seo_ready == true` → skip to Stage 2.
+* If `ready_to_pitch == true` but `seo_ready == false` → the persona
+  exists but is incomplete. Look at `missing_for_seo` (an array). For
+  each item, ask the user the corresponding question and patch with
+  `--action update`:
+  * `business_url` → "What URL should reporters link to when they
+    credit you?" → `--action update --url https://acme.com`
+  * `bio` → draft a 2-4 sentence bio, get user approval, then
+    `--action update --bio "..."`
+  * `email` → "Which email should reporters reply to?" →
+    `--action update --email jane@acme.com`
+
+  Run `--action get` again afterwards to confirm `seo_ready` is now true.
+
+* If `ready_to_pitch == false` → no persona exists. Go to the create
+  flow below.
+
+If `ready_to_pitch == false`, you need to **collect the user's info
+in a single message before running create**. Don't drip-ask one field
+at a time. Use this exact checklist:
+
+> **REQUIRED to even create the profile:**
+> - `--full-name` — the user's real name as the byline should appear
+>
+> **STRONGLY RECOMMENDED — without these the profile is useless for SEO:**
+> - `--url` — the user's **business website URL** (e.g. `https://acme.com`).
+>   ⚠️ This is the link journalists put in their articles when they
+>   credit the user. **No URL = no backlink = the whole point of this
+>   skill is defeated.** Confirm it before running create.
+> - `--bio` — a 2-4 sentence description of who the user is, what they
+>   do, and what topics they can credibly speak to. The bio is what
+>   reporters skim when deciding whether to use a quote. Mention the
+>   business name, role, and 2-3 areas of expertise. If the user gave
+>   you their bio elsewhere, use that. If not, draft one from what they
+>   told you and **show it to them for approval before submitting**.
+> - `--email` — the user's professional email (where reporters reply).
+>
+> **NICE TO HAVE (ask but don't block on):**
+> - `--linkedin` — full LinkedIn profile URL (boosts credibility a lot)
+> - `--location` — `"City, State, Country"` (some pubs filter by region)
+> - `--gender` — one of `f` / `m` / `nb` / `sd` (for pronouns in articles)
+> - `--twitter`, `--phone`, `--facebook`, `--instagram` — only if the
+>   user wants reporters to have these channels.
+
+**Always ask the user to confirm at minimum the URL, bio and email**
+before firing the create command. Those three are what end up in
+articles. Example of how to ask:
+
+> "Before I set up your Qwoted expert profile, I need to confirm a few
+> things that journalists will see and link to:
+>
+> 1. **Business URL** — what site should reporters link to when they
+>    credit you? (e.g. `https://acme.com`)
+> 2. **Bio** — here's a draft based on what you told me: *"Jane is the
+>    founder of Acme Inc, a B2B SaaS that helps marketing teams ship
+>    campaigns 10x faster. She speaks to growth, GTM and pricing."*
+>    Sound right?
+> 3. **Reply-to email** — which email should reporters use to follow up?
+>
+> Anything you'd like to add (LinkedIn, location, etc.)?"
+
+Then build the command from their answers:
 
 ```bash
 python3 qwoted_profile.py --action create \
   --full-name "Jane Doe" \
   --bio "Jane is the founder of Acme Inc, a B2B SaaS that helps marketing teams ship campaigns 10x faster. She advises on growth, GTM and pricing." \
-  --location "San Francisco, CA, USA" \
-  --gender f \
-  --email jane@acme.com \
   --url https://acme.com \
-  --linkedin https://www.linkedin.com/in/jane-doe/
+  --email jane@acme.com \
+  --linkedin https://www.linkedin.com/in/jane-doe/ \
+  --location "San Francisco, CA, USA" \
+  --gender f
 ```
 
-Optional fields you can also pass: `--phone`, `--twitter`, `--facebook`,
-`--instagram`, `--off-the-record`, `--hide-from-search-engines`. Repeat
-flags to add multiple values (first one is marked as primary).
+Repeat any contact flag to add multiple values (the first one becomes
+primary). Other flags: `--off-the-record`, `--hide-from-search-engines`.
 
 To update an existing persona later (e.g. the user got a new title):
 

@@ -120,11 +120,23 @@ def _list_pitchable_entities(
                 None,
             )
             attrs = (inc or {}).get("attributes") or {}
+            # The JSON:API exposes a flat set of contact fields directly on
+            # the entity (url, email, phone, twitter, facebook). Claude
+            # uses these to confirm the persona has a website URL — no
+            # URL means a Qwoted-quote in an article will earn no
+            # backlink, which defeats the purpose of this whole skill.
             out.append({
                 "id": iid,
                 "name": attrs.get("full_name") or attrs.get("name") or attrs.get("title") or "",
                 "slug": attrs.get("slug") or "",
                 "bio": attrs.get("bio") or attrs.get("description") or "",
+                "url": (attrs.get("url") or "").strip(),
+                "email": (attrs.get("email") or "").strip(),
+                "phone": (attrs.get("phone") or "").strip(),
+                "twitter": (attrs.get("twitter") or "").strip(),
+                "facebook": (attrs.get("facebook") or "").strip(),
+                "company_name": (attrs.get("company_name") or "").strip(),
+                "has_business_url": bool((attrs.get("url") or "").strip()),
             })
         return out
 
@@ -427,6 +439,20 @@ def main(argv: list[str] | None = None) -> int:
             first_pitchable = entities["companies"][0]
         elif entities["products"]:
             first_pitchable = entities["products"][0]
+
+        # Surface what's missing so the calling AI agent can decide whether
+        # to ask the user to fill in gaps before pitching.
+        missing_for_seo: list[str] = []
+        if not first_pitchable:
+            missing_for_seo.append("any_pitchable_entity")
+        else:
+            if not first_pitchable.get("has_business_url"):
+                missing_for_seo.append("business_url")
+            if not first_pitchable.get("bio"):
+                missing_for_seo.append("bio")
+            if not first_pitchable.get("email"):
+                missing_for_seo.append("email")
+
         result_line({
             "status": "ok",
             "action": "get",
@@ -437,6 +463,8 @@ def main(argv: list[str] | None = None) -> int:
             "companies": entities["companies"],
             "first_pitchable_entity": first_pitchable,
             "ready_to_pitch": bool(first_pitchable),
+            "missing_for_seo": missing_for_seo,
+            "seo_ready": bool(first_pitchable) and not missing_for_seo,
             "profile_state_path": str(profile_file()),
         })
         return 0
