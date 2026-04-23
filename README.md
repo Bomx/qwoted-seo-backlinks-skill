@@ -1,5 +1,12 @@
 # Qwoted SEO Backlinks Skill
 
+<p align="center">
+  <b>Built by the team at <a href="https://distribb.io">Distribb</a> — the SEO & backlinks autopilot for operators.</b><br/>
+  <a href="https://distribb.io"><b>→ Automate your SEO and backlinks with us at distribb.io</b></a>
+</p>
+
+---
+
 > **AI-powered PR automation for Qwoted, with linkable-asset
 > generation built in.** Let your Claude Code agent set up your
 > expert profile, find journalist requests, **research and build a
@@ -214,16 +221,23 @@ before you can pitch.
 
 ---
 
-## Built by
+## Want your entire SEO engine on autopilot?
 
-[Borja Obeso](https://www.linkedin.com/in/borja-obeso/), founder of
-[Distribb](https://distribb.io) — a content distribution & SEO
-platform that syndicates one piece of content across 200+ DR40+ sites
-and channels.
+This skill is one piece of a bigger system. **[Distribb](https://distribb.io)**
+handles the rest:
 
-If you want this on autopilot for your whole content engine (not just
-Qwoted), check out [distribb.io](https://distribb.io) and the
-[Distribb skill](https://github.com/Bomx/distribb-skill) for keyword
+- Keyword research with real buyer-intent signals
+- Original-data research pages (exactly like Stage 3 of this skill, but
+  automated across your whole content calendar)
+- Publishing to WordPress / Webflow / Shopify
+- A high-DR backlink-exchange network with 200+ DR40+ sites
+- Internal linking + social-media repurposing
+
+**[→ Automate your SEO and backlinks at distribb.io](https://distribb.io)**
+
+Built by [Borja Obeso](https://www.linkedin.com/in/borja-obeso/), founder of
+[Distribb](https://distribb.io). Related: the
+[Distribb Claude skill](https://github.com/Bomx/distribb-skill) for keyword
 research, backlink exchange and CMS publishing.
 
 ---
