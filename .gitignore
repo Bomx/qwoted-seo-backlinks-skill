@@ -8,6 +8,11 @@ qwoted_opportunities/
 *.cookies.json
 storage_state.json
 
+# --- Stage-3 generated stats pages (per-user output) ---------------
+# Keep the example template under templates/ committed, but never
+# commit any generated pages — they belong to the end user.
+statistics_pages/
+
 # --- Python --------------------------------------------------------
 __pycache__/
 *.py[cod]

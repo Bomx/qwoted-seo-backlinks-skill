@@ -1,14 +1,17 @@
 ---
 name: qwoted-seo-backlinks
 description: |
-  Automate Qwoted (HARO-style PR platform) end-to-end: log in, set up the
-  user's "expert" Source persona (bio + employer + contacts), search the
-  Algolia-backed opportunity index, draft pitches as the user, and submit
-  them to journalists. Earn high-DR backlinks and press mentions on
-  autopilot. Use this skill whenever the user asks for "PR opportunities",
+  Automate Qwoted (HARO-style PR platform) end-to-end and earn high-DR
+  backlinks at scale: log in, set up the user's "expert" Source persona
+  (bio + employer + contacts), search the Algolia-backed opportunity
+  index, RESEARCH and BUILD a sourced statistics page on the user's
+  topic (the linkable asset journalists love to cite), draft pitches
+  as the user that link to that page, and submit them to journalists.
+  Use this skill whenever the user asks for "PR opportunities",
   "Qwoted opportunities", "press mentions", "journalist requests",
   "HARO replies", "media pitches", "podcast guesting", "expert quotes",
-  or "backlinks from journalists".
+  "stats page for SEO", "research page for journalists", or
+  "backlinks from journalists".
 ---
 
 # Qwoted SEO Backlinks Skill — playbook for Claude
@@ -16,30 +19,58 @@ description: |
 Your job is to get the user **press mentions and high-DR backlinks** from
 journalists who post requests on [Qwoted](https://app.qwoted.com).
 
-The skill ships four CLI scripts you call as subprocesses. Each one
-prints a single `RESULT: { ... }` JSON line on stdout that you parse to
-decide the next step. Detailed human-readable logs go to stderr.
+The skill ships four CLI scripts you call as subprocesses, plus a
+research playbook and an HTML template. Each script prints a single
+`RESULT: { ... }` JSON line on stdout that you parse to decide the
+next step. Detailed human-readable logs go to stderr.
 
 ```
-qwoted_login.py     # one-time auth (opens a browser the user signs into)
-qwoted_profile.py   # get/create/update the user's "expert" Source persona
-qwoted_search.py    # search opportunities (Algolia, returns JSON)
-qwoted_pitch.py     # draft + send a pitch to a specific opportunity
+qwoted_login.py                      # one-time auth (browser the user signs into)
+qwoted_profile.py                    # get/create/update the "expert" Source persona
+qwoted_search.py                     # search opportunities (Algolia, returns JSON)
+qwoted_pitch.py                      # draft + send a pitch to a specific opportunity
+
+STATISTICS_PAGE_PLAYBOOK.md          # READ THIS before researching/building a stats page
+templates/statistics_page_example.html # HTML scaffold to fill in
 ```
 
-All cookies, sent-pitch logs and search results live under `~/.qwoted/`.
+All cookies, sent-pitch logs, search results and generated stat pages
+live under `~/.qwoted/` and `./statistics_pages/`.
+
+---
+
+## The full workflow (4 stages)
+
+```
+  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐    ┌──────────────┐
+  │ 1. Onboard   │ →  │ 2. Find      │ →  │ 3. Research +    │ →  │ 4. Pitch     │
+  │  (login +    │    │  opportunity │    │  publish a stats │    │  with the    │
+  │   profile)   │    │              │    │  page (linkable  │    │  page URL    │
+  │              │    │              │    │  asset)          │    │              │
+  └──────────────┘    └──────────────┘    └──────────────────┘    └──────────────┘
+       once             every session       once per topic           every pitch
+```
+
+Stage 3 is the multiplier. A naked pitch lands one quote in one
+article. A pitch that links to a thoroughly-sourced stats page lands
+*recurring* citations for months because reporters who search for
+"<topic> statistics 2026" find the page and cite it on their own.
+**Always offer Stage 3 when the topic is broad enough and the
+deadline allows.** See `STATISTICS_PAGE_PLAYBOOK.md` for when to skip
+it.
 
 ---
 
 ## Decision tree — what to do based on what the user asks
 
-| User intent | Skill command(s) |
+| User intent | Skill stage(s) |
 |---|---|
-| "Set me up on Qwoted" / first time | `qwoted_login.py` → `qwoted_profile.py --action get` → if empty, `qwoted_profile.py --action create ...` |
-| "Update my Qwoted bio" / "change my expert profile" | `qwoted_profile.py --action update --bio '...'` |
-| "Find PR opportunities about X" / "show me Qwoted requests" | `qwoted_search.py --query "X" --max-hits 30` |
-| "Pitch opportunity #N" / "draft a pitch for SR 235897" | `qwoted_pitch.py --source-request-id N --pitch-text-file /tmp/pitch.txt` (dry-run) → user approves → re-run with `--send` |
-| "Pitch the top 3 opportunities" | Loop: read JSON from search, draft custom pitch per opp, run dry-run, ask user, then `--send` |
+| "Set me up on Qwoted" / first time | Stage 1: `qwoted_login.py` → `qwoted_profile.py --action get` → create/update as needed |
+| "Update my Qwoted bio" / "change my expert profile" | Stage 1c: `qwoted_profile.py --action update --bio '...'` |
+| "Find PR opportunities about X" | Stage 2: `qwoted_search.py --query "X" --max-hits 30` |
+| "Build me a stats page on X" / "make a research page about X" | Stage 3 only: read `STATISTICS_PAGE_PLAYBOOK.md` and execute |
+| "Pitch opportunity #N" / "draft a pitch for SR 235897" | Stages 2 → 3 (if applicable) → 4: dry-run → user approves → `--send` |
+| "Pitch the top 3 opportunities about X" | Stage 2 → Stage 3 ONCE for X → Stage 4 looped 3x with the same `--research-page-url` |
 
 ---
 
@@ -227,7 +258,74 @@ accounts on response rate.
 
 ---
 
-## Stage 3 — Draft and send pitches
+## Stage 3 — Build a sourced statistics page (the linkable asset)
+
+> **READ `STATISTICS_PAGE_PLAYBOOK.md` BEFORE EXECUTING THIS STAGE.**
+> This section is just the *when*. The *how* (research methodology,
+> source quality bar, HTML build, anti-hallucination rules) lives in
+> the playbook.
+
+### Why it matters
+
+A pitch that just contains opinion gets one quote in one article. A
+pitch that links to a comprehensive, sourced statistics page on the
+same topic gets the user *recurring* citations for months — because
+the next reporter who searches `"<topic> statistics 2026"` finds the
+page on the user's domain and cites it without ever knowing the user
+exists. **This is the move that turns Qwoted from a one-off PR tool
+into a compounding SEO engine.**
+
+### When to build a stats page (decision rule)
+
+Offer to build one when **all** of these are true:
+
+1. The opportunity topic is broad enough to support a stats roundup
+   (e.g. "AI in marketing trends" — yes; "founders who pivoted in
+   2024" — no, that's an anecdote ask).
+2. The deadline is **at least 24-48 hours away** (research takes time
+   if you're going to do it well).
+3. The user doesn't already have a recent, high-quality stats page on
+   the same topic.
+
+Skip and go straight to Stage 4 when the deadline is tight or the ask
+is qualitative (anecdotes, opinions, case studies).
+
+If multiple Stage 2 opportunities are on the same topic, **build the
+stats page once and reuse it across every pitch in that batch** with
+the same `--research-page-url` flag.
+
+### How to ask the user
+
+Don't just unilaterally start building a 3000-word page. Ask:
+
+> *"Two of the opportunities I found are about [topic]. I can build
+> you a sourced statistics page on this — it's a one-time effort that
+> typically earns you backlinks for months because journalists cite
+> it organically. The page would have ~50-80 stats, 2 charts, and a
+> couple of comparison tables. Takes me ~5-10 minutes to research and
+> draft. Want me to do it before pitching, or just pitch directly?"*
+
+### How to execute
+
+1. **Read `STATISTICS_PAGE_PLAYBOOK.md`** — it has the full research
+   methodology, source quality bar, and HTML build instructions.
+2. **Pull the user's bio info** so the byline + author footer are
+   filled correctly:
+   ```bash
+   python3 qwoted_profile.py --action get
+   ```
+   Use `first_pitchable_entity.name`, `.url`, `.company_name`, `.bio`.
+3. **Research** using the playbook's source priority + quality bar.
+4. **Build the HTML** by filling in the placeholders in
+   `templates/statistics_page_example.html`.
+5. **Save to** `./statistics_pages/<slug>.html`.
+6. **Tell the user** how to preview (`open ./statistics_pages/<slug>.html`)
+   and ask them to publish on their own site (their CMS, their call).
+7. **Wait for the public URL** — don't proceed to Stage 4 without it.
+
+---
+
+## Stage 4 — Draft and send pitches
 
 ### How to write a great pitch (this is on YOU, the AI)
 
@@ -240,11 +338,18 @@ Each pitch should be:
   answering the request. 2-4 bullet points work great. Numbers,
   specific examples and contrarian takes get used; vague platitudes
   get deleted.
+* **If you built a Stage 3 stats page** for this topic, reference
+  the URL in the second paragraph: *"I just published a 50-stat
+  roundup on [topic] at [URL] — happy to pull the most relevant
+  ones for your angle."* This is the move that gets the page cited.
+  Quote 2-3 of the most striking stats inline so the reporter sees
+  immediate value without clicking.
 * **Last sentence** offers a credit format (e.g. `Credit me as Jane
   Doe, founder of Acme Inc (acme.com)`) and an offer to expand or
   hop on a quick call.
-* **No links in the pitch body** unless directly requested — Qwoted
-  has a separate "publicizable" field that handles that.
+* **No links in the pitch body OTHER than the stats page URL** — keep
+  the pitch focused. The stats page is the only link that earns a
+  backlink.
 * **No corporate marketing speak.** Talk like a smart founder
   emailing a friend at TechCrunch.
 
@@ -279,8 +384,15 @@ it) and ask for approval.
 python3 qwoted_pitch.py \
   --source-request-id 235897 \
   --pitch-text-file /tmp/qwoted_pitch.txt \
+  --research-page-url https://acme.com/blog/ai-marketing-statistics-2026 \
   --send
 ```
+
+The `--research-page-url` flag is optional but **strongly recommended
+when you built a Stage 3 stats page**. It gets logged alongside the
+pitch in `~/.qwoted/sent_pitches.json` so you can later answer
+questions like "which research pages drove the most pitches" or
+"which page is the user citing in this PR push".
 
 `status: "sent"` in the RESULT line means the reporter has been
 notified. The pitch is also appended to `~/.qwoted/sent_pitches.json`.
@@ -314,12 +426,19 @@ source-request, so the server-side block is hard).
   pitch is a real message to a real journalist — they remember spammers.
 * **Never invent biographical details** about the user. Ask if you don't
   know.
+* **Never invent statistics in a Stage 3 page.** Every stat must have a
+  real URL you actually fetched. One fabricated stat caught by a
+  journalist torpedoes the user's reputation forever. See the
+  anti-hallucination rules in `STATISTICS_PAGE_PLAYBOOK.md`.
 * **Never pitch opportunities outside the user's expertise.** Qwoted
   tracks reply rate and bad pitches hurt the account permanently.
 * **Never modify `~/.qwoted/sent_pitches.json`** by hand — the
   duplicate guard relies on it. Treat it as append-only state.
 * **Never commit `~/.qwoted/` to git.** It contains the user's session
   cookies (`storage_state.json`) — full account access.
+* **Never publish a Stage 3 stats page on Medium / LinkedIn / dev.to
+  before the user's own domain.** The canonical version must live at
+  `https://<theirsite>/...` — that's where the backlinks need to go.
 
 ---
 
@@ -340,9 +459,18 @@ python3 qwoted_profile.py --action update --bio '...'    # edit first Source
 python3 qwoted_search.py --query "marketing automation" --max-hits 30
 python3 qwoted_search.py --query "" --max-hits 50        # all opportunities
 
+# Build a stats page (Stage 3)
+# 1. READ STATISTICS_PAGE_PLAYBOOK.md for the research methodology
+# 2. Open templates/statistics_page_example.html
+# 3. Fill in placeholders → save to ./statistics_pages/<slug>.html
+# 4. open ./statistics_pages/<slug>.html  # preview
+# 5. User publishes on their site → returns public URL
+
 # Pitch
 python3 qwoted_pitch.py --source-request-id 235897 --pitch-text-file /tmp/p.txt
 python3 qwoted_pitch.py --source-request-id 235897 --pitch-text-file /tmp/p.txt --send
+python3 qwoted_pitch.py --source-request-id 235897 --pitch-text-file /tmp/p.txt \
+    --research-page-url https://acme.com/blog/x-stats-2026 --send       # with stats page
 python3 qwoted_pitch.py --opportunity-id de1ccdba --pitch-text-file /tmp/p.txt --send  # short URL form
 ```
 

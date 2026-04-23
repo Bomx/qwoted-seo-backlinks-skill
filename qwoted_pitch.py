@@ -444,6 +444,7 @@ def send_pitch(
     allow_duplicates: bool = False,
     entity_id: str | None = None,
     entity_type: str | None = None,
+    research_page_url: str | None = None,
 ) -> dict[str, Any]:
     if not pitch_text or not pitch_text.strip():
         raise ValueError("pitch_text is empty")
@@ -563,6 +564,12 @@ def send_pitch(
         "pitch_text": pitch_text,
         "sent_at": sent_at,
         "entities_attached": entities,
+        # Public URL of any research / statistics page the user
+        # published and linked to from inside the pitch body. Captured
+        # for traceability ("which research page drove the most
+        # pitches?") and to make it easier to audit which Stage-3
+        # asset is being promoted in any given PR push.
+        "research_page_url": research_page_url,
     }
     _append_sent_pitch(log_entry)
 
@@ -612,6 +619,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--entity-type", default=None,
                    choices=("Source", "Product", "Company"),
                    help="Entity type for --entity-id.")
+    p.add_argument("--research-page-url", default=None,
+                   help="Public URL of a Stage-3 statistics/research page "
+                        "you've referenced from inside the pitch body. "
+                        "Logged in ~/.qwoted/sent_pitches.json for "
+                        "traceability across a PR push.")
     args = p.parse_args(argv)
 
     if args.source_request_id is None and not args.opportunity_id:
@@ -637,6 +649,7 @@ def main(argv: list[str] | None = None) -> int:
             allow_duplicates=args.allow_duplicates,
             entity_id=args.entity_id,
             entity_type=args.entity_type,
+            research_page_url=args.research_page_url,
         )
     except Exception as e:
         log(f"FAILED: {e}")
@@ -649,6 +662,7 @@ def main(argv: list[str] | None = None) -> int:
         "pitch_id": res.get("pitch_id"),
         "sent_at": res.get("sent_at"),
         "page_url": res.get("page_url"),
+        "research_page_url": (res.get("log_entry") or {}).get("research_page_url"),
     })
     return 0
 

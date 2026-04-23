@@ -1,9 +1,12 @@
 # Qwoted SEO Backlinks Skill
 
-> **AI-powered PR automation for Qwoted.** Let your Claude Code agent
-> set up your expert profile, find journalist requests, draft pitches
-> in your voice and send them — earning press mentions and high-DR
-> backlinks while you focus on the work that matters.
+> **AI-powered PR automation for Qwoted, with linkable-asset
+> generation built in.** Let your Claude Code agent set up your
+> expert profile, find journalist requests, **research and build a
+> sourced statistics page on the topic** (the kind journalists love
+> to cite), and send pitches that link to it — earning press
+> mentions and recurring high-DR backlinks while you focus on the
+> work that matters.
 
 [Qwoted](https://qwoted.com) is the modern HARO replacement: every day,
 journalists at TechCrunch, Forbes, Inc., 1851 Franchise, Adweek and
@@ -12,11 +15,21 @@ they're writing about. Reply with a thoughtful pitch and you might land
 in the article — usually with a do-follow link back to your site (which
 is why this is one of the best white-hat SEO backlink channels in 2026).
 
+**The unique move in this skill is Stage 3:** instead of just sending
+a naked opinion pitch, Claude can research and generate a
+comprehensive HTML statistics page on the topic (40-80 sourced stats,
+Chart.js charts, schema.org markup, ready to publish on your CMS).
+You publish it, Claude pitches with the link. The journalist gets
+quotable numbers; you get one-shot mentions *plus* recurring
+citations for months as other reporters discover your page through
+search.
+
 This skill teaches Claude Code (or any AI agent that can shell out) how
 to drive Qwoted end-to-end on your behalf, so you can say things like:
 
 - *"Find me PR opportunities about marketing automation today."*
-- *"Pitch the top 3 — make each one specific to the publication."*
+- *"Build me a sourced stats page on AI in marketing, then pitch
+  the top 3 opportunities about it."*
 - *"Update my Qwoted bio to reflect my new role."*
 
 …and have it actually happen.
@@ -81,35 +94,59 @@ pitched twice.
 
 ## What the skill ships
 
-| Script | What it does |
+| File | What it does |
 |---|---|
 | `qwoted_login.py` | One-time browser login. Saves cookies to `~/.qwoted/`. Re-runs only if cookies expire (typically every 30 days). |
 | `qwoted_profile.py` | Get / create / update your Qwoted "Source" persona — the bio, employer, location and contact links every pitch is attached to. |
 | `qwoted_search.py` | Searches the same Algolia index Qwoted's website uses. Returns clean JSON with deadline, publication, request type, hashtags, etc. |
-| `qwoted_pitch.py` | Drafts and (optionally) submits pitches via Qwoted's internal API. Defaults to dry-run; you must pass `--send` to actually fire. |
+| `qwoted_pitch.py` | Drafts and (optionally) submits pitches via Qwoted's internal API. Defaults to dry-run; you must pass `--send` to actually fire. Optional `--research-page-url` flag logs the linked stats-page URL for traceability. |
+| `STATISTICS_PAGE_PLAYBOOK.md` | The research methodology Claude follows when building a Stage-3 stats page: source quality bar, anti-hallucination rules, structure, length targets, anti-patterns. |
+| `templates/statistics_page_example.html` | Self-contained HTML scaffold (modern responsive CSS, Chart.js charts, Article + FAQPage schema markup, print-friendly). Claude fills in the placeholders. |
+| `SKILL.md` | The Claude Code playbook itself — frontmatter + 4-stage workflow. |
 
-All four are pure Python (`requests` + `playwright`) and have an
-opinionated `RESULT: { ... }` JSON output line so AI agents can chain
-them together reliably.
+All four scripts are pure Python (`requests` + `playwright`) and have
+an opinionated `RESULT: { ... }` JSON output line so AI agents can
+chain them together reliably.
 
 ---
 
+## The 4-stage workflow
+
+```
+  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐    ┌──────────────┐
+  │ 1. Onboard   │ →  │ 2. Find      │ →  │ 3. Research +    │ →  │ 4. Pitch     │
+  │  (login +    │    │  opportunity │    │  publish a stats │    │  with the    │
+  │   profile)   │    │              │    │  page (linkable  │    │  page URL    │
+  │              │    │              │    │  asset)          │    │              │
+  └──────────────┘    └──────────────┘    └──────────────────┘    └──────────────┘
+       once             every session       once per topic           every pitch
+```
+
+Stage 3 is the multiplier. A naked pitch lands one quote in one
+article. A pitch that links to a thoroughly-sourced stats page lands
+*recurring* citations for months because the next reporter who
+searches `"<topic> statistics 2026"` finds the page on your domain
+and cites it on their own.
+
 ## State directory
 
-Everything lives under `~/.qwoted/`:
+Everything lives under `~/.qwoted/` and `./statistics_pages/`:
 
 ```
 ~/.qwoted/
 ├── storage_state.json     # session cookies (full account access — do NOT share)
 ├── chromium-profile/      # persistent Chromium profile so re-logins are 1-click
 ├── profile_state.json     # snapshot of your Sources/Products/Companies
-├── sent_pitches.json      # append-only log; powers the duplicate guard
+├── sent_pitches.json      # append-only log w/ research_page_url tracking
 └── opportunities/         # JSON dumps from each search
     └── marketing_20260422_153058.json
+
+./statistics_pages/        # generated stats pages (Stage 3 output)
+└── ai-in-marketing-statistics-2026.html
 ```
 
-Override the location with `QWOTED_HOME=/some/path`. Reset by deleting
-the folder.
+Override the `~/.qwoted/` location with `QWOTED_HOME=/some/path`.
+Reset by deleting the folder.
 
 ---
 
@@ -196,4 +233,7 @@ research, backlink exchange and CMS publishing.
 `qwoted automation`, `qwoted api`, `qwoted skill claude`, `claude code
 seo skill`, `auto pr backlinks`, `journalist pitch automation`, `haro
 alternative automation`, `pr outreach ai agent`, `expert source pr
-tool`, `automated press mentions`.
+tool`, `automated press mentions`, `ai-generated statistics page`,
+`linkable asset for seo`, `journalist citation backlinks`,
+`programmatic seo pr`, `claude code stats page generator`,
+`haro pitch automation 2026`.

@@ -1,0 +1,689 @@
+<!--
+  ============================================================================
+  STATISTICS PAGE EXAMPLE — Qwoted SEO Backlinks Skill
+  ============================================================================
+  Self-contained HTML scaffold for Claude to fill in. See
+  STATISTICS_PAGE_PLAYBOOK.md for the workflow. Replace every {{...}}
+  placeholder, duplicate <section class="stat-section"> blocks as needed,
+  and (optionally) the FAQPage JSON-LD block at the bottom.
+
+  Design principles:
+    - One file. No build step. Opens in any browser via file:// or http://
+    - System fonts so it renders identically anywhere
+    - Mobile-first. Sticky TOC on desktop, top accordion on mobile
+    - Single accent color, easy to change via the --accent CSS variable
+    - Chart.js loaded from CDN — works offline if cached, fails gracefully
+    - Print-friendly
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{TITLE}}</title>
+  <meta name="description" content="The most-cited {{TOPIC_LOWER}} statistics for {{YEAR}}, organized by topic and sourced from analyst firms, vendor research, and primary surveys." />
+  <meta name="author" content="{{AUTHOR_NAME}}" />
+  <link rel="canonical" href="{{CANONICAL_URL}}" />
+
+  <!-- Open Graph + Twitter for nice social previews -->
+  <meta property="og:title" content="{{TITLE}}" />
+  <meta property="og:description" content="The most-cited {{TOPIC_LOWER}} statistics for {{YEAR}}, sourced and organized." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="{{CANONICAL_URL}}" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Article schema — gets you into Google rich results & AI Overviews -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "{{TITLE}}",
+    "author": {
+      "@type": "Person",
+      "name": "{{AUTHOR_NAME}}",
+      "jobTitle": "{{AUTHOR_TITLE}}",
+      "url": "{{AUTHOR_URL}}"
+    },
+    "datePublished": "{{ISO_DATE}}",
+    "dateModified": "{{ISO_DATE}}",
+    "publisher": {
+      "@type": "Organization",
+      "name": "{{PUBLISHER_NAME}}",
+      "url": "{{AUTHOR_URL}}"
+    },
+    "mainEntityOfPage": "{{CANONICAL_URL}}"
+  }
+  </script>
+
+  <!-- Optional FAQPage schema. Delete this block entirely if you don't
+       have FAQ data, or fill it in (4-6 question/answer pairs is the
+       sweet spot for AI Overview eligibility). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "{{FAQ_Q_1}}",
+        "acceptedAnswer": { "@type": "Answer", "text": "{{FAQ_A_1}}" }
+      },
+      {
+        "@type": "Question",
+        "name": "{{FAQ_Q_2}}",
+        "acceptedAnswer": { "@type": "Answer", "text": "{{FAQ_A_2}}" }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --accent: {{ACCENT_COLOR}};
+      --accent-soft: color-mix(in srgb, var(--accent) 12%, white);
+      --accent-darker: color-mix(in srgb, var(--accent) 80%, black);
+      --ink: #15171a;
+      --ink-soft: #4a5057;
+      --ink-faded: #7a8089;
+      --line: #e6e8ec;
+      --bg: #ffffff;
+      --bg-soft: #f6f7f9;
+      --radius: 14px;
+      --maxw: 1200px;
+      --content: 760px;
+      --shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.06);
+      font-feature-settings: "ss01", "cv11";
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent-darker); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+    a:hover { color: var(--accent); }
+
+    h1, h2, h3, h4 { line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); }
+    h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin: 0 0 0.5rem; }
+    h2 { font-size: 1.7rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent-soft); }
+    h3 { font-size: 1.25rem; font-weight: 700; margin: 1.75rem 0 0.5rem; }
+    p { margin: 0 0 1rem; color: var(--ink-soft); }
+
+    /* ======================================================================
+       HERO — title, byline, last-updated
+       ====================================================================== */
+    .hero {
+      background: linear-gradient(135deg, var(--accent-soft) 0%, var(--bg) 100%);
+      border-bottom: 1px solid var(--line);
+      padding: 4rem 1.5rem 3rem;
+    }
+    .hero-inner {
+      max-width: var(--maxw);
+      margin: 0 auto;
+    }
+    .eyebrow {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-darker);
+      background: var(--bg);
+      padding: 0.4rem 0.8rem;
+      border-radius: 999px;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.25rem;
+    }
+    .byline {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 1.25rem;
+      font-size: 0.95rem;
+      color: var(--ink-soft);
+    }
+    .byline strong { color: var(--ink); font-weight: 600; }
+    .byline .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-faded); }
+
+    /* ======================================================================
+       LAYOUT — sticky TOC sidebar on desktop, top accordion on mobile
+       ====================================================================== */
+    .layout {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2rem;
+    }
+    @media (min-width: 860px) {
+      .layout {
+        grid-template-columns: 200px minmax(0, var(--content)) 1fr;
+        gap: 2rem;
+      }
+    }
+
+    /* TOC */
+    .toc {
+      background: var(--bg-soft);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      font-size: 0.92rem;
+    }
+    @media (min-width: 860px) {
+      .toc { position: sticky; top: 1.5rem; align-self: start; max-height: calc(100vh - 3rem); overflow-y: auto; }
+    }
+    .toc h4 {
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faded);
+      margin: 0 0 0.75rem;
+    }
+    .toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; }
+    .toc li { counter-increment: toc; margin-bottom: 0.5rem; }
+    .toc a {
+      color: var(--ink-soft);
+      text-decoration: none;
+      display: block;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+    .toc a::before {
+      content: counter(toc, decimal-leading-zero);
+      position: absolute;
+      left: 0;
+      color: var(--ink-faded);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.78rem;
+      top: 0.15em;
+    }
+    .toc a:hover { color: var(--accent-darker); }
+
+    /* Article */
+    .article { min-width: 0; }
+    .article > p:first-of-type { font-size: 1.1rem; color: var(--ink); }
+
+    /* ======================================================================
+       STAT SECTIONS
+       ====================================================================== */
+    .stat-section { scroll-margin-top: 1.5rem; }
+
+    .headline-stat {
+      background: var(--accent-soft);
+      border-left: 4px solid var(--accent);
+      padding: 1.25rem 1.5rem;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      margin: 1.5rem 0;
+      font-size: 1.15rem;
+      line-height: 1.5;
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .headline-stat .source {
+      display: block;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: var(--ink-soft);
+    }
+
+    .stats-list {
+      list-style: none;
+      counter-reset: stat;
+      padding: 0;
+      margin: 1.5rem 0;
+    }
+    .stats-list li {
+      counter-increment: stat;
+      padding: 0.85rem 0 0.85rem 2.75rem;
+      border-bottom: 1px solid var(--line);
+      position: relative;
+      color: var(--ink);
+    }
+    .stats-list li:last-child { border-bottom: none; }
+    .stats-list li::before {
+      content: counter(stat);
+      position: absolute;
+      left: 0;
+      top: 0.95rem;
+      width: 1.9rem;
+      height: 1.9rem;
+      border-radius: 50%;
+      background: var(--bg-soft);
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .stats-list .source {
+      display: inline;
+      color: var(--ink-faded);
+      font-size: 0.92rem;
+    }
+
+    /* ======================================================================
+       TABLES
+       ====================================================================== */
+    .stat-table-wrap { overflow-x: auto; margin: 1.5rem 0; border-radius: var(--radius); box-shadow: var(--shadow); }
+    table.stat-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg);
+      font-size: 0.95rem;
+    }
+    .stat-table th, .stat-table td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    .stat-table th {
+      background: var(--bg-soft);
+      font-weight: 700;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ink-soft);
+    }
+    .stat-table tr:last-child td { border-bottom: none; }
+    .stat-table td:not(:first-child) { font-variant-numeric: tabular-nums; }
+
+    /* ======================================================================
+       CHARTS
+       ====================================================================== */
+    .chart-card {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      box-shadow: var(--shadow);
+    }
+    .chart-card h4 {
+      margin: 0 0 0.25rem;
+      font-size: 1rem;
+    }
+    .chart-card .chart-source {
+      font-size: 0.82rem;
+      color: var(--ink-faded);
+      margin-bottom: 1rem;
+    }
+    .chart-canvas-wrap {
+      position: relative;
+      height: 320px;
+    }
+
+    /* ======================================================================
+       FAQ
+       ====================================================================== */
+    .faq details {
+      border-bottom: 1px solid var(--line);
+      padding: 1rem 0;
+    }
+    .faq summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 1.05rem;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .faq summary::after {
+      content: "+";
+      font-size: 1.5rem;
+      color: var(--accent);
+      transition: transform 0.2s;
+    }
+    .faq details[open] summary::after { content: "−"; }
+
+    /* ======================================================================
+       SOURCES + AUTHOR FOOTER
+       ====================================================================== */
+    .sources-list {
+      column-count: 2;
+      column-gap: 2rem;
+      font-size: 0.92rem;
+      color: var(--ink-soft);
+      padding-left: 1.25rem;
+    }
+    @media (min-width: 700px) { .sources-list { column-count: 3; } }
+
+    .author-card {
+      margin-top: 4rem;
+      padding: 2rem;
+      background: var(--bg-soft);
+      border-radius: var(--radius);
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .author-card .author-info { flex: 1 1 250px; min-width: 0; }
+    .author-card .author-info h4 {
+      margin: 0 0 0.25rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faded);
+    }
+    .author-card .author-info .name { font-size: 1.2rem; font-weight: 700; margin: 0 0 0.25rem; color: var(--ink); }
+    .author-card .author-info .title { color: var(--ink-soft); margin: 0 0 0.75rem; font-size: 0.95rem; }
+    .author-card .author-info .bio { font-size: 0.95rem; color: var(--ink-soft); margin: 0 0 0.75rem; }
+    .author-card .author-info .website {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .author-card .author-info .website:hover { background: var(--accent-darker); color: white; }
+
+    /* ======================================================================
+       PRINT
+       ====================================================================== */
+    @media print {
+      .toc, .author-card .website { display: none; }
+      .hero { background: none; padding: 0 0 1rem; }
+      .layout { display: block; padding: 0; }
+      .chart-card, .stat-table-wrap { box-shadow: none; border: 1px solid #ccc; }
+      a { color: var(--ink); text-decoration: underline; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ======================== HERO ======================== -->
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="eyebrow">{{EYEBROW_TAG}}</span>
+      <h1>{{TITLE}}</h1>
+      <p class="byline">
+        By <strong>{{AUTHOR_NAME}}</strong>
+        <span class="dot"></span>
+        {{AUTHOR_TITLE}}
+        <span class="dot"></span>
+        Last updated: {{LAST_UPDATED}}
+      </p>
+    </div>
+  </header>
+
+  <!-- ======================== LAYOUT ======================== -->
+  <div class="layout">
+
+    <!-- ============== TOC SIDEBAR ============== -->
+    <aside class="toc" aria-label="Table of contents">
+      <h4>Contents</h4>
+      <ol>
+        <li><a href="#key-stats">Key {{TOPIC}} Statistics</a></li>
+        <li><a href="#market-size">Market Size and Growth</a></li>
+        <li><a href="#user-behavior">User Behavior</a></li>
+        <li><a href="#technology">Technology and Tools</a></li>
+        <li><a href="#roi">ROI and Performance</a></li>
+        <li><a href="#future">Future Projections</a></li>
+        <li><a href="#faq">Frequently Asked Questions</a></li>
+        <li><a href="#sources">Sources</a></li>
+      </ol>
+    </aside>
+
+    <!-- ============== ARTICLE ============== -->
+    <main class="article">
+
+      <p>{{INTRO_PARAGRAPH}}</p>
+
+      <!-- ========== SECTION: Key Stats ========== -->
+      <section id="key-stats" class="stat-section">
+        <h2>Key {{TOPIC}} Statistics</h2>
+        <p>The most-cited {{TOPIC_LOWER}} numbers in one place, sourced from analyst firms, primary surveys, and vendor State-of-X reports.</p>
+
+        <ol class="stats-list">
+          <li>
+            <strong>{{KEY_STAT_1}}</strong>.
+            <span class="source">(Source: <a href="{{SOURCE_URL_1}}">{{SOURCE_NAME_1}}</a>, {{YEAR_1}})</span>
+          </li>
+          <li>
+            <strong>{{KEY_STAT_2}}</strong>.
+            <span class="source">(Source: <a href="{{SOURCE_URL_2}}">{{SOURCE_NAME_2}}</a>, {{YEAR_2}})</span>
+          </li>
+          <!-- Repeat: 6-10 key stats total -->
+        </ol>
+      </section>
+
+      <!-- ========== SECTION: Market Size ========== -->
+      <section id="market-size" class="stat-section">
+        <h2>Market Size and Growth</h2>
+        <p>How big {{TOPIC_LOWER}} is today and where the analyst consensus says it's heading.</p>
+
+        <div class="headline-stat">
+          {{MARKET_SIZE_HEADLINE}}
+          <span class="source">— {{MARKET_SIZE_HEADLINE_SOURCE}}</span>
+        </div>
+
+        <ol class="stats-list">
+          <li>
+            <strong>{{STAT}}</strong>.
+            <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span>
+          </li>
+          <!-- 5-10 stats -->
+        </ol>
+
+        <!-- Example chart: market size projection over time -->
+        <div class="chart-card">
+          <h4>{{CHART_1_TITLE}}</h4>
+          <p class="chart-source">{{CHART_1_SOURCE}}</p>
+          <div class="chart-canvas-wrap">
+            <canvas id="chart-market-size"></canvas>
+          </div>
+        </div>
+
+        <!-- Example table -->
+        <div class="stat-table-wrap">
+          <table class="stat-table">
+            <thead>
+              <tr>
+                <th>{{TABLE_1_COL_A}}</th>
+                <th>{{TABLE_1_COL_B}}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>{{ROW_A_1}}</td><td>{{ROW_B_1}}</td></tr>
+              <tr><td>{{ROW_A_2}}</td><td>{{ROW_B_2}}</td></tr>
+              <tr><td>{{ROW_A_3}}</td><td>{{ROW_B_3}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========== SECTION: User Behavior ========== -->
+      <section id="user-behavior" class="stat-section">
+        <h2>User Behavior</h2>
+        <p>How {{TOPIC_LOWER}} customers/users actually behave today.</p>
+
+        <div class="headline-stat">
+          {{BEHAVIOR_HEADLINE}}
+          <span class="source">— {{BEHAVIOR_HEADLINE_SOURCE}}</span>
+        </div>
+
+        <ol class="stats-list">
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+        </ol>
+
+        <!-- Second example chart: a doughnut for share-of-X -->
+        <div class="chart-card">
+          <h4>{{CHART_2_TITLE}}</h4>
+          <p class="chart-source">{{CHART_2_SOURCE}}</p>
+          <div class="chart-canvas-wrap">
+            <canvas id="chart-share"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SECTION: Technology ========== -->
+      <section id="technology" class="stat-section">
+        <h2>Technology and Tools</h2>
+        <p>Adoption rates, platform shifts, and the tools winning right now.</p>
+        <ol class="stats-list">
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+        </ol>
+      </section>
+
+      <!-- ========== SECTION: ROI ========== -->
+      <section id="roi" class="stat-section">
+        <h2>ROI and Performance</h2>
+        <p>What kind of return teams are actually getting.</p>
+        <ol class="stats-list">
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+        </ol>
+      </section>
+
+      <!-- ========== SECTION: Future ========== -->
+      <section id="future" class="stat-section">
+        <h2>Future Projections</h2>
+        <p>What the analyst consensus says about the next 2-5 years.</p>
+        <ol class="stats-list">
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+        </ol>
+      </section>
+
+      <!-- ========== SECTION: FAQ (optional) ========== -->
+      <section id="faq" class="stat-section faq">
+        <h2>Frequently Asked Questions</h2>
+
+        <details>
+          <summary>{{FAQ_Q_1}}</summary>
+          <p>{{FAQ_A_1}}</p>
+        </details>
+
+        <details>
+          <summary>{{FAQ_Q_2}}</summary>
+          <p>{{FAQ_A_2}}</p>
+        </details>
+
+        <!-- Add 2-4 more details blocks -->
+      </section>
+
+      <!-- ========== SECTION: Sources ========== -->
+      <section id="sources" class="stat-section">
+        <h2>Sources</h2>
+        <p>Every stat above is sourced from one of the following organizations or publications:</p>
+        <ol class="sources-list">
+          <li>{{SOURCE_NAME}}</li>
+          <!-- Repeat — deduped list of every source domain referenced -->
+        </ol>
+      </section>
+
+      <!-- ========== AUTHOR FOOTER ========== -->
+      <aside class="author-card">
+        <div class="author-info">
+          <h4>About the author</h4>
+          <p class="name">{{AUTHOR_NAME}}</p>
+          <p class="title">{{AUTHOR_TITLE}}</p>
+          <p class="bio">{{AUTHOR_BIO}}</p>
+          <a class="website" href="{{AUTHOR_URL}}" rel="noopener">Visit {{AUTHOR_DOMAIN}} →</a>
+        </div>
+      </aside>
+
+    </main>
+
+    <!-- third grid column reserved for future "share / cited by" widgets -->
+    <div></div>
+  </div>
+
+  <!-- ============== CHART.JS ============== -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script defer>
+    // Wait for Chart.js to load. If it doesn't (offline / CDN blocked),
+    // the chart cards just stay empty — the data is still readable from
+    // the surrounding stats list, so no information is lost.
+    window.addEventListener('load', () => {
+      if (typeof Chart === 'undefined') return;
+
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3a86ff';
+      const accentSoft = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#dde9ff';
+      const ink = '#15171a';
+      const inkSoft = '#7a8089';
+
+      Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+      Chart.defaults.color = inkSoft;
+      Chart.defaults.borderColor = '#e6e8ec';
+
+      // ----- Chart 1: line/bar over time (market size projection) -----
+      const c1 = document.getElementById('chart-market-size');
+      if (c1) {
+        new Chart(c1, {
+          type: 'bar',
+          data: {
+            labels: ['{{X1}}', '{{X2}}', '{{X3}}', '{{X4}}'],
+            datasets: [{
+              label: '{{CHART_1_LABEL}}',
+              data: [{{Y1}}, {{Y2}}, {{Y3}}, {{Y4}}],
+              backgroundColor: accent,
+              borderRadius: 6,
+              borderSkipped: false,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y}{{CHART_1_UNIT}}` } }
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { callback: (v) => `${v}{{CHART_1_UNIT}}` } },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+      }
+
+      // ----- Chart 2: doughnut for share-of-X -----
+      const c2 = document.getElementById('chart-share');
+      if (c2) {
+        new Chart(c2, {
+          type: 'doughnut',
+          data: {
+            labels: ['{{SLICE_1}}', '{{SLICE_2}}', '{{SLICE_3}}', '{{SLICE_4}}'],
+            datasets: [{
+              data: [{{V1}}, {{V2}}, {{V3}}, {{V4}}],
+              backgroundColor: [
+                accent,
+                'color-mix(in srgb, ' + accent + ' 70%, white)',
+                'color-mix(in srgb, ' + accent + ' 45%, white)',
+                'color-mix(in srgb, ' + accent + ' 20%, white)'
+              ],
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '62%',
+            plugins: {
+              legend: { position: 'right', labels: { boxWidth: 12, padding: 12 } },
+              tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed}%` } }
+            }
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
