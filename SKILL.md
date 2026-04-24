@@ -65,6 +65,18 @@ skip them, do not substitute your own judgement.
    one JSON line prefixed with `RESULT: `. Parse it; ignore stderr
    logs (those are for the human). Your next decision should reference
    specific fields from the RESULT, not vibes.
+7. **The stats page must contain ZERO outbound `<a>` tags.** Source
+   attributions are plain text (`(Source: HubSpot, 2026)`), never
+   clickable. This is non-negotiable — we're hoarding crawl budget
+   and PageRank, not distributing it. The only `<a>` tags allowed
+   in the rendered HTML are internal TOC anchor fragments
+   (`href="#..."`) and a same-domain author-bio CTA. Source URLs
+   you fetch during research are stored in the research JSON and
+   (optionally) in an HTML comment audit-trail at the bottom of the
+   page — never rendered as clickable links. See
+   `STATISTICS_PAGE_PLAYBOOK.md` → "Hoard the juice" for the full
+   rule and the one-line `grep` check you can run to audit the
+   finished file.
 
 ---
 

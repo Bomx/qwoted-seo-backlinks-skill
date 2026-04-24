@@ -115,9 +115,108 @@ so they can redirect if the angle is off.
 - ☑ Has a **named source** (organisation/publication, not "experts say")
 - ☑ Has a **year** (this year, last year, or labelled appropriately)
 - ☑ Is **specific** (a number, percentage, ratio — not vague modifiers)
-- ☑ Has a **real URL you actually fetched** (not a search result snippet)
+- ☑ Has a **real URL you actually fetched** (not a search result snippet).
+  ⚠️ This URL is for YOUR verification during research only. It is
+  stored in the research JSON as proof-of-existence. It is **not**
+  rendered as a clickable link in the final HTML — see "Hoard the
+  juice" below.
 - ☑ Is **quoted faithfully** (don't round or extrapolate)
-- ☑ Is **linkable** by the reader (the source URL works)
+- ☑ The source URL **works at the time of writing** (so if anyone
+  spot-checks it they find the original — but again, not rendered
+  as a clickable link)
+
+---
+
+## 🔒 Hoard the juice — ZERO outbound links in the rendered HTML
+
+The statistics page is a **linkable asset**: its job is to ATTRACT
+inbound links from journalists, bloggers and other stat roundups —
+not to DISTRIBUTE authority outward. Every outbound `<a href>` leaks
+a little PageRank and gives crawlers a reason to follow a link off
+the user's domain instead of deeper into it. We refuse to do that.
+
+**Hard rule: the rendered HTML must contain ZERO `<a>` tags pointing
+to any domain other than the page's own domain.** No exceptions, no
+`nofollow` workarounds (nofollow is just a hint in 2026 and still
+triggers crawl).
+
+### What this means in practice
+
+| Pattern | Allowed? | Example |
+|---|---|---|
+| Source attribution as **plain text** | ✅ REQUIRED | `(Source: HubSpot State of Marketing, 2026)` |
+| Source attribution as a clickable link | ❌ FORBIDDEN | `(Source: <a href="https://hubspot.com/…">HubSpot</a>, 2026)` |
+| Internal TOC anchor link | ✅ Fine | `<a href="#market-size">Market Size</a>` |
+| Author-bio CTA to the user's own business URL (SAME domain as the page) | ✅ Fine | `<a href="https://distribb.io">Distribb →</a>` when the page lives at `distribb.io/blog/...` |
+| Link to an analyst firm's methodology page | ❌ FORBIDDEN | strip it |
+| Link to a social profile (LinkedIn/Twitter of a quoted analyst) | ❌ FORBIDDEN | strip it |
+| Link to the publisher's homepage / other article | ❌ FORBIDDEN | strip it |
+
+### Rendering source attribution
+
+Every time a stat appears, attribute it inline as plain text. Use
+this exact pattern so the "Source:" prefix is consistent and the
+year is always present:
+
+```html
+<li><strong>42% of B2B marketers say AI is their #1 priority.</strong>
+    <span class="source">(Source: HubSpot State of Marketing, 2026)</span></li>
+```
+
+NOT:
+
+```html
+<!-- WRONG — leaks juice -->
+<li><strong>42% of B2B marketers…</strong>
+    <span class="source">(Source: <a href="https://hubspot.com/…">HubSpot</a>, 2026)</span></li>
+```
+
+### Where the source URLs live
+
+- In the research JSON (Step 3) — that's your audit trail and what
+  proves the stat wasn't hallucinated.
+- Optionally, at the bottom of the rendered HTML inside an HTML
+  comment so a human reviewer can open view-source and spot-check:
+
+```html
+<!--
+audit_trail:
+- stat: "42% of B2B marketers say AI is their #1 priority"
+  source_name: "HubSpot State of Marketing"
+  source_url: "https://www.hubspot.com/state-of-marketing/2026"
+  year: 2026
+- ...
+-->
+```
+
+HTML comments are invisible to readers and not followed by crawlers.
+
+### Why not just use `rel="nofollow noopener"`?
+
+1. Google treats `nofollow` as a "hint" since 2020 and still crawls
+   through them.
+2. Some minor PageRank leakage is still debated.
+3. Zero `<a>` tags is the only *provably* leak-free posture.
+4. It's also simpler to audit: a `grep 'href="http'` on the rendered
+   file should return zero hits (apart from the canonical link in
+   `<head>` and on-domain internal links).
+
+### One trade-off to acknowledge
+
+Well-placed outbound links to authoritative sources are a mild
+positive ranking signal (Google has confirmed this). On a brand-new
+domain with zero authority, a stats page with zero outbound links
+may rank slightly slower initially. Mitigations we already apply:
+
+- Rich on-page signals (Article + FAQPage schema, author bio, date
+  stamps, named sources in plain text).
+- Strong internal linking from the user's blog to the new page.
+- Pitch-driven backlinks from the Stage 4 workflow build authority
+  over time.
+
+For a domain that already has authority (e.g. `distribb.io`), the
+no-outbound posture is a pure win. Accept the small cold-start cost
+for new domains.
 
 ### Research workflow
 
@@ -173,10 +272,12 @@ It's a single self-contained file with:
 - Embedded Chart.js (CDN) for charts
 - Schema.org Article + FAQPage JSON-LD
 - Print-friendly styles
-- Anchor-linked table of contents
+- Anchor-linked table of contents (internal fragments only)
 - "Headline stat" callouts inside each section
 - Tables for ranking/comparison data
-- Author bio footer with link to user's site
+- Author bio footer with link to user's site (on-domain CTA only)
+- **Zero outbound `<a>` tags** — source citations are plain text
+  (see "Hoard the juice" section above)
 
 ### What you fill in
 
@@ -197,8 +298,15 @@ The placeholders are:
 | `{{AUTHOR_BIO}}` | from profile (`bio` field) | – |
 | `{{ACCENT_COLOR}}` | match user's brand if known, else `#3a86ff` | – |
 | `{{SECTIONS}}` | list of `{id, title, intro, headline_stat, stats[], chart?, table?}` | – |
-| `{{SOURCES}}` | deduped list of source domains used | `Gartner, HubSpot, Semrush, ...` |
+| `{{SOURCES}}` | deduped list of source names (PLAIN TEXT, not links) used | `Gartner, HubSpot, Semrush, McKinsey, ...` |
 | `{{FAQS}}` | optional 4-6 Q&A pairs | – |
+
+Per-stat placeholders inside the template (`{{SOURCE_NAME_N}}`,
+`{{YEAR_N}}`, `{{STAT_N}}`) are all rendered as plain text. There is
+NO `{{SOURCE_URL_N}}` / `{{URL}}` placeholder anymore — those were
+removed when we locked in the no-outbound-links rule. Store source
+URLs only in the research JSON (Step 3) and, optionally, in the
+audit-trail HTML comment at the bottom of the page.
 
 ### Charts
 

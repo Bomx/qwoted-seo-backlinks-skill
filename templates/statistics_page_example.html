@@ -14,6 +14,21 @@
     - Single accent color, easy to change via the --accent CSS variable
     - Chart.js loaded from CDN — works offline if cached, fails gracefully
     - Print-friendly
+
+  ★ NON-NEGOTIABLE SEO RULE — ZERO OUTBOUND <a> TAGS ★
+    The page must have no <a href> pointing off-domain. This preserves
+    100% of the crawl budget and PageRank for the user's own site.
+    See STATISTICS_PAGE_PLAYBOOK.md → "Hoard the juice" for the full
+    reasoning. Source attribution is plain text:
+        (Source: HubSpot State of Marketing, 2026)    ✅
+        (Source: <a href="...">HubSpot</a>, 2026)     ❌
+    Allowed exceptions:
+      - <link rel="canonical"> in <head>: self-referential, no leak.
+      - TOC anchor links like <a href="#market-size">: internal only.
+      - Author-bio CTA to {{AUTHOR_URL}}: OK ONLY IF the user's
+        business URL is the SAME domain as the page's hosting
+        domain. If not, render the author-bio CTA as plain text
+        instead (delete the <a> wrapper around "Visit ...").
   ============================================================================
 -->
 <!DOCTYPE html>
@@ -456,11 +471,11 @@
         <ol class="stats-list">
           <li>
             <strong>{{KEY_STAT_1}}</strong>.
-            <span class="source">(Source: <a href="{{SOURCE_URL_1}}">{{SOURCE_NAME_1}}</a>, {{YEAR_1}})</span>
+            <span class="source">(Source: {{SOURCE_NAME_1}}, {{YEAR_1}})</span>
           </li>
           <li>
             <strong>{{KEY_STAT_2}}</strong>.
-            <span class="source">(Source: <a href="{{SOURCE_URL_2}}">{{SOURCE_NAME_2}}</a>, {{YEAR_2}})</span>
+            <span class="source">(Source: {{SOURCE_NAME_2}}, {{YEAR_2}})</span>
           </li>
           <!-- Repeat: 6-10 key stats total -->
         </ol>
@@ -479,7 +494,7 @@
         <ol class="stats-list">
           <li>
             <strong>{{STAT}}</strong>.
-            <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span>
+            <span class="source">(Source: {{NAME}}, {{YEAR}})</span>
           </li>
           <!-- 5-10 stats -->
         </ol>
@@ -522,7 +537,7 @@
         </div>
 
         <ol class="stats-list">
-          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: {{NAME}}, {{YEAR}})</span></li>
         </ol>
 
         <!-- Second example chart: a doughnut for share-of-X -->
@@ -540,7 +555,7 @@
         <h2>Technology and Tools</h2>
         <p>Adoption rates, platform shifts, and the tools winning right now.</p>
         <ol class="stats-list">
-          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: {{NAME}}, {{YEAR}})</span></li>
         </ol>
       </section>
 
@@ -549,7 +564,7 @@
         <h2>ROI and Performance</h2>
         <p>What kind of return teams are actually getting.</p>
         <ol class="stats-list">
-          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: {{NAME}}, {{YEAR}})</span></li>
         </ol>
       </section>
 
@@ -558,7 +573,7 @@
         <h2>Future Projections</h2>
         <p>What the analyst consensus says about the next 2-5 years.</p>
         <ol class="stats-list">
-          <li><strong>{{STAT}}</strong>. <span class="source">(Source: <a href="{{URL}}">{{NAME}}</a>, {{YEAR}})</span></li>
+          <li><strong>{{STAT}}</strong>. <span class="source">(Source: {{NAME}}, {{YEAR}})</span></li>
         </ol>
       </section>
 
@@ -596,6 +611,10 @@
           <p class="name">{{AUTHOR_NAME}}</p>
           <p class="title">{{AUTHOR_TITLE}}</p>
           <p class="bio">{{AUTHOR_BIO}}</p>
+          <!-- Author-bio CTA — SAME-DOMAIN ONLY. If {{AUTHOR_URL}} is on a
+               DIFFERENT domain than where this page is hosted, delete the
+               <a> wrapper and render "Visit {{AUTHOR_DOMAIN}}" as plain text
+               to preserve the zero-outbound-links rule. -->
           <a class="website" href="{{AUTHOR_URL}}" rel="noopener">Visit {{AUTHOR_DOMAIN}} →</a>
         </div>
       </aside>
@@ -685,5 +704,23 @@
       }
     });
   </script>
+
+  <!--
+    ============================================================================
+    AUDIT TRAIL (optional but recommended)
+    ============================================================================
+    HTML comments are not followed by crawlers and not visible to readers, so
+    this block preserves a private, verifiable record of every stat's source
+    without leaking any juice off-domain. Fill it in 1:1 with your research
+    JSON (Step 3 of STATISTICS_PAGE_PLAYBOOK.md).
+
+    - stat: "{{STAT_TEXT}}"
+      source_name: "{{SOURCE_NAME}}"
+      source_url:  "{{SOURCE_URL}}"   # kept here for audit only — NEVER rendered
+      year: {{YEAR}}
+      fetched_on: "{{YYYY-MM-DD}}"
+    - stat: ...
+    ============================================================================
+  -->
 </body>
 </html>
