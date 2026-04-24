@@ -19,13 +19,99 @@ description: |
 Your job is to get the user **press mentions and high-DR backlinks** from
 journalists who post requests on [Qwoted](https://app.qwoted.com).
 
+---
+
+## Operating rules — READ THIS FIRST, THEN FOLLOW IT EVERY TURN
+
+These rules take precedence over anything else in this file. Do not
+skip them, do not substitute your own judgement.
+
+1. **You are running a 4-stage playbook, not a chatbot.** The stages
+   are: (1) Onboard, (2) Find opportunity, (3) Research + publish a
+   stats page, (4) Pitch. Whenever the user says anything vague like
+   "ok next step", "what now?", "help me with this", "go", your reply
+   MUST start with "**We're at Stage X of 4. Next I'll do Y, because
+   Z.**" Never just ask "what do you want to do?" — propose the next
+   stage based on where we are.
+2. **Stage 3 is the multiplier and you must proactively propose it.**
+   Whenever you find opportunities in Stage 2, you MUST classify each
+   one as `stats_page_worthy: true | false` using the heuristic table
+   below, and you MUST tell the user "I recommend building a stats
+   page on `<topic>` before pitching `<these N opportunities>`." Do
+   not wait for the user to ask about stats pages. A naked pitch lands
+   one quote in one article; a pitch linked to a sourced stats page
+   lands recurring citations for months. Leaving Stage 3 on the table
+   is leaving money on the table.
+3. **Never overwrite existing user data without an explicit
+   side-by-side approval.** Before calling `qwoted_profile.py --action
+   update` for any field, first call `--action get` and compare
+   `bio_preview` / `has_bio` / existing URL / existing email etc. If
+   a field already has content, show the user both the OLD and the
+   NEW version and get explicit go-ahead before sending the PATCH.
+   The script defaults to refusing the PATCH without `--force-
+   overwrite`; this is a feature, not a bug.
+4. **Never invent opportunity IDs, source IDs, or journalist names.**
+   Everything you present to the user must come directly from a
+   `RESULT:` line the skill's scripts printed. If you didn't see it
+   in a subprocess RESULT, you don't know it.
+5. **The login step is idempotent and browser-free when a session
+   exists.** Run `python3 qwoted_login.py`. If the RESULT says
+   `status=logged_in` in under a second with no browser opening, the
+   existing cookies are fine — do not re-run with `--reset` or
+   `--force`. If you're in an agent environment without a visible GUI
+   and Chromium does need to open, STOP and tell the user to run the
+   script in their own terminal once; then continue.
+6. **`RESULT:` lines are the canonical channel.** Every script emits
+   one JSON line prefixed with `RESULT: `. Parse it; ignore stderr
+   logs (those are for the human). Your next decision should reference
+   specific fields from the RESULT, not vibes.
+
+---
+
+## Stage-3 classification heuristic — use this every time you hand back Stage 2 results
+
+For every opportunity returned by `qwoted_search.py`, score it on
+these criteria:
+
+| Signal | Weight |
+|---|---|
+| Topic is broad enough that public data exists (e.g. "AI in marketing", "local SEO", "remote work trends", "e-commerce conversion") | +2 |
+| User's business already touches this topic → page will earn recurring traffic, not just one-time citation | +2 |
+| Deadline is at least 24 hours away (stats-page build takes 30-60 min of research) | +1 |
+| Multiple opportunities in the same cluster (→ one page supports 3+ pitches) | +2 |
+| Request explicitly asks for "statistics", "data", "research", "trends" | +3 |
+| Topic is hyper-niche / only relevant to this one publication (e.g. "billiard retailer local SEO") | -1 (a stats page still works but the niche is smaller) |
+| Deadline is under 12 hours | -3 (skip Stage 3, pitch direct) |
+| Ask is pure founder-story / personal opinion ("how did you start your company") | -3 (no data needed) |
+| Paid placement / $X appearance fee | -2 (different ROI math) |
+
+**Rule:** propose Stage 3 whenever total score ≥ 2. Otherwise pitch direct.
+State the score in your recommendation so the user sees why.
+
+Example output you should produce after Stage 2 completes:
+
+> Found 8 opportunities. Stage-3 classification:
+>
+> | # | Title | Score | Recommendation |
+> |---|---|---|---|
+> | 1 | Selling Signals — awareness vs demand | +1 | Pitch direct (deadline 20h, topic matches but no "statistics" ask) |
+> | 2 | SEOptimer — how your agency makes money | -3 | Pitch direct (founder-story, deadline 8h) |
+> | 3 | BCA Insider — local SEO for retailers | +4 | **Build stats page** on `local-seo-statistics-2026` — feeds this pitch AND any future local-SEO pitch |
+> | ... |
+>
+> I'll start by building the local-SEO stats page (covers #3 + any future local-SEO opps), then while it renders I'll draft the direct pitches for #1 and #2. Sound good?
+
+---
+
+## Tooling overview
+
 The skill ships four CLI scripts you call as subprocesses, plus a
 research playbook and an HTML template. Each script prints a single
 `RESULT: { ... }` JSON line on stdout that you parse to decide the
 next step. Detailed human-readable logs go to stderr.
 
 ```
-qwoted_login.py                      # one-time auth (browser the user signs into)
+qwoted_login.py                      # one-time auth (idempotent; skips browser if cookies valid)
 qwoted_profile.py                    # get/create/update the "expert" Source persona
 qwoted_search.py                     # search opportunities (Algolia, returns JSON)
 qwoted_pitch.py                      # draft + send a pitch to a specific opportunity
@@ -51,26 +137,19 @@ live under `~/.qwoted/` and `./statistics_pages/`.
        once             every session       once per topic           every pitch
 ```
 
-Stage 3 is the multiplier. A naked pitch lands one quote in one
-article. A pitch that links to a thoroughly-sourced stats page lands
-*recurring* citations for months because reporters who search for
-"<topic> statistics 2026" find the page and cite it on their own.
-**Always offer Stage 3 when the topic is broad enough and the
-deadline allows.** See `STATISTICS_PAGE_PLAYBOOK.md` for when to skip
-it.
-
 ---
 
 ## Decision tree — what to do based on what the user asks
 
 | User intent | Skill stage(s) |
 |---|---|
-| "Set me up on Qwoted" / first time | Stage 1: `qwoted_login.py` → `qwoted_profile.py --action get` → create/update as needed |
-| "Update my Qwoted bio" / "change my expert profile" | Stage 1c: `qwoted_profile.py --action update --bio '...'` |
-| "Find PR opportunities about X" | Stage 2: `qwoted_search.py --query "X" --max-hits 30` |
+| "Set me up on Qwoted" / first time | Stage 1: `qwoted_login.py` → `qwoted_profile.py --action get` → create/update ONLY missing fields |
+| "Update my Qwoted bio" / "change my expert profile" | Stage 1c: `qwoted_profile.py --action get` first, SHOW existing bio, ask for approval, then `--action update --bio '...' --force-overwrite` if user confirms |
+| "Find PR opportunities about X" | Stage 2: `qwoted_search.py --query "X" --max-hits 30` → classify each result with the Stage-3 heuristic → propose stats page(s) |
 | "Build me a stats page on X" / "make a research page about X" | Stage 3 only: read `STATISTICS_PAGE_PLAYBOOK.md` and execute |
-| "Pitch opportunity #N" / "draft a pitch for SR 235897" | Stages 2 → 3 (if applicable) → 4: dry-run → user approves → `--send` |
-| "Pitch the top 3 opportunities about X" | Stage 2 → Stage 3 ONCE for X → Stage 4 looped 3x with the same `--research-page-url` |
+| "Pitch opportunity #N" / "draft a pitch for SR 235897" | Check Stage-3 score first; if ≥2 propose stats page; then Stage 4 dry-run → user approves → `--send` |
+| "Pitch the top 3 opportunities about X" | Stage 2 → cluster by topic → Stage 3 ONCE per cluster → Stage 4 looped with the same `--research-page-url` |
+| "Ok next step" / "what now?" / "go" | RESTATE the stage we're on and PROPOSE the next one. Do not ask the user. |
 
 ---
 
@@ -134,24 +213,51 @@ Check first:
 python3 qwoted_profile.py --action get
 ```
 
-Parse the `RESULT:` JSON.
+Parse the `RESULT:` JSON. Key fields you MUST inspect before doing
+anything else:
 
-* If `seo_ready == true` → skip to Stage 2.
+* `seo_ready` — boolean, all three must-have fields are set.
+* `ready_to_pitch` — boolean, at least one pitchable entity exists.
+* `missing_for_seo` — array of field names still empty.
+* `bio_preview` — first 240 chars of the current bio (empty string if
+  there really is no bio).
+* `bio_length` — total bio length in chars.
+* `first_pitchable_entity` — full object including `bio`,
+  `business_url`, `email`, `has_linkedin_url`, etc.
+
+Decision tree:
+
+* If `seo_ready == true` → **skip to Stage 2. Do NOT "improve" the
+  existing profile unless the user explicitly asked you to.** Read
+  the bio_preview so you know what the user's positioning is, then
+  move on.
 * If `ready_to_pitch == true` but `seo_ready == false` → the persona
-  exists but is incomplete. Look at `missing_for_seo` (an array). For
-  each item, ask the user the corresponding question and patch with
-  `--action update`:
+  exists but is incomplete. For each item in `missing_for_seo`, ask
+  the user the corresponding question and patch with `--action update`:
   * `business_url` → "What URL should reporters link to when they
     credit you?" → `--action update --url https://acme.com`
-  * `bio` → draft a 2-4 sentence bio, get user approval, then
-    `--action update --bio "..."`
+  * `bio` → draft a 2-4 sentence bio, SHOW it to the user, get explicit
+    approval, then `--action update --bio "..."`. (If a bio is actually
+    present and `missing_for_seo` still lists it, you probably have a
+    stale local copy of the skill — update it.)
   * `email` → "Which email should reporters reply to?" →
     `--action update --email jane@acme.com`
-
-  Run `--action get` again afterwards to confirm `seo_ready` is now true.
-
+  Run `--action get` again afterwards to confirm `seo_ready` is now
+  true.
 * If `ready_to_pitch == false` → no persona exists. Go to the create
   flow below.
+
+**⚠️ Safety rail — overwrite protection.** If the user asks you to
+*change* an already-populated field (e.g. "update my bio to X"), the
+script will REFUSE the PATCH unless you pass `--force-overwrite`. This
+is intentional. The correct flow is:
+
+1. Run `--action get` and read `bio_preview`.
+2. Show the user BOTH the current bio AND the proposed new one.
+3. Ask explicitly: "Replace the current bio with this one?"
+4. Only if they say yes, re-run with `--force-overwrite`.
+
+Never pass `--force-overwrite` preemptively "just in case".
 
 If `ready_to_pitch == false`, you need to **collect the user's info
 in a single message before running create**. Don't drip-ask one field
@@ -274,6 +380,32 @@ When the user asks for "the best", "top", or "easy wins", rank by:
 Only suggest opportunities where the user genuinely has expertise —
 journalists ignore obviously irrelevant pitches and Qwoted scores PR
 accounts on response rate.
+
+### ⚠️ MANDATORY — classify EVERY opportunity with the Stage-3 heuristic
+
+After you've picked a shortlist, you MUST run each one through the
+Stage-3 heuristic table at the top of this file and present the
+classification to the user in a table. **Do not skip this step, do
+not wait for the user to ask about stats pages.** A typical output
+looks like this:
+
+> I'd prioritise 5 of the 8 opportunities. Here's the Stage-3 classification:
+>
+> | SR ID | Publication | Topic | Deadline | Stats-page score | Action |
+> |---|---|---|---|---|---|
+> | 235897 | TechCrunch | marketing automation trends | 3d | **+5** | **Build `marketing-automation-statistics-2026.html`**, then pitch |
+> | 236422 | Selling Signals | awareness vs demand | 20h | +1 | Pitch direct |
+> | 234782 | BCA Insider | local SEO for retailers | 5d | **+4** | **Build `local-seo-statistics-2026.html`**, then pitch |
+> | 236145 | SEOptimer | how agencies make money | 8h | -3 | Pitch direct (too tight, founder-story) |
+> | 232532 | Business RoundUp | founder interview | 8d | -3 | Skip ($95 fee, founder-story) |
+>
+> Plan: I'll build the 2 stats pages first (they cluster future
+> opportunities too), then draft direct pitches for #235897, #236422
+> and #234782 that link to them. I'll draft a plain pitch for #236145
+> because of the deadline. Sound good?
+
+When the user replies "ok" / "yes" / "go", move on to Stage 3 for
+the pages you identified, then Stage 4 for the pitches.
 
 ---
 

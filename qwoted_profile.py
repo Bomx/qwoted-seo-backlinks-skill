@@ -52,6 +52,7 @@ The result includes the full `entity_id`/`entity_type` triple needed by
 from __future__ import annotations
 
 import argparse
+import html as html_mod
 import json
 import re
 import sys
@@ -77,6 +78,66 @@ from qwoted_common import (  # noqa: E402
     require_cookies,
     result_line,
 )
+
+
+# ---------------------------------------------------------------------------
+# HTML edit-form supplement
+# ---------------------------------------------------------------------------
+#
+# Qwoted's JSON:API at /api/internal/jsonapi/users/<id> does NOT expose the
+# Source's `bio` attribute (nor its canonical `slug`, nor a LinkedIn-style
+# contact URL). Those fields only live in the HTML edit form at
+# /sources/<id_or_slug>/edit.
+#
+# Prior versions of this script would therefore always report bio as missing
+# even for fully-populated profiles, which led at least one agent to PATCH
+# over a good user-written bio with an auto-generated one. Don't do that.
+# Always fetch the edit form to check what's really there.
+# ---------------------------------------------------------------------------
+_BIO_TEXTAREA_RE = re.compile(
+    r'<textarea[^>]*name="source\[bio\]"[^>]*>(.*?)</textarea>',
+    re.S,
+)
+_FORM_ACTION_RE = re.compile(
+    r'<form\s+class="edit_source"[^>]+action="(/sources/[^"]+)"'
+)
+_LOCATION_RE = re.compile(
+    r'<input[^>]*name="source\[location_string\]"[^>]*value="([^"]*)"'
+)
+
+
+def _fetch_source_edit_form_extras(
+    cookies: dict[str, str], source_ref: str | int,
+) -> dict[str, str]:
+    """Fetch /sources/<ref>/edit and parse the fields that the JSON:API omits.
+
+    Returns {"bio": "...", "slug": "...", "location": "..."} on success,
+    or {} on any failure (caller treats missing keys as empty).
+
+    Never raises — this is a best-effort supplement. If the agent can't
+    load the form (rare), we still return the JSON:API data, we just lose
+    the bio-presence check.
+    """
+    try:
+        r = authed_get(f"/sources/{source_ref}/edit", cookies, timeout=15)
+    except Exception as e:
+        log(f"  could not fetch edit form for source {source_ref}: {e}")
+        return {}
+    if r.status_code != 200 or looks_like_login_page(r.text):
+        log(f"  edit form for source {source_ref} returned HTTP {r.status_code}")
+        return {}
+
+    out: dict[str, str] = {}
+    m = _BIO_TEXTAREA_RE.search(r.text)
+    if m:
+        out["bio"] = html_mod.unescape(m.group(1)).strip()
+    m = _FORM_ACTION_RE.search(r.text)
+    if m:
+        out["slug"] = m.group(1).rsplit("/", 1)[-1]
+    m = _LOCATION_RE.search(r.text)
+    if m:
+        out["location"] = html_mod.unescape(m.group(1)).strip()
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -142,10 +203,26 @@ def _list_pitchable_entities(
 
     sources_raw = (rels.get("sources") or {}).get("data") or []
     products_raw = (rels.get("products") or {}).get("data") or []
+
+    sources = [
+        {**d, "entity_type": "Source"} for d in _details_for("sources", sources_raw)
+    ]
+
+    # Supplement each Source with the HTML-form fields the JSON:API hides.
+    # This is the ONLY way to know whether a bio is actually set.
+    for src in sources:
+        extras = _fetch_source_edit_form_extras(cookies, src["id"])
+        if extras.get("bio"):
+            src["bio"] = extras["bio"]
+        if extras.get("slug") and not src.get("slug"):
+            src["slug"] = extras["slug"]
+        if extras.get("location"):
+            src["location"] = extras["location"]
+        src["has_bio"] = bool(src.get("bio"))
+        src["bio_length"] = len(src.get("bio") or "")
+
     return {
-        "sources": [
-            {**d, "entity_type": "Source"} for d in _details_for("sources", sources_raw)
-        ],
+        "sources": sources,
         "products": [
             {**d, "entity_type": "Product"} for d in _details_for("products", products_raw)
         ],
@@ -305,7 +382,17 @@ def _update_source(
     """`source_ref` can be the canonical slug (e.g. `borja-obeso-<uuid>`)
     OR the numeric id (e.g. `304105`). Rails `friendly_id` accepts either.
     We always parse the canonical slug from the loaded edit form so the
-    POST goes to the right URL."""
+    POST goes to the right URL.
+
+    Safety rail: if `--bio` is being set and the source already has a
+    non-empty bio, we REFUSE to clobber it unless the caller explicitly
+    passes `--force-overwrite`. This stops the common agent failure mode
+    of "get reports bio missing (false positive) → agent auto-generates
+    a new bio → user's hand-written original is destroyed". Previous
+    versions of this skill had that bug. The refusal surfaces as a
+    clear error in the RESULT line so the agent can show both the old
+    and new text to the user and wait for explicit approval.
+    """
     edit_url = f"{QWOTED_BASE}/sources/{source_ref}/edit"
     log(f"loading edit form: {edit_url}")
     r = authed_get(edit_url, cookies)
@@ -316,8 +403,25 @@ def _update_source(
     if not csrf:
         raise RuntimeError("CSRF token not found on edit form")
 
+    # Overwrite safety check — BEFORE building the POST body.
+    if args.bio is not None and not args.force_overwrite:
+        existing_bio_match = _BIO_TEXTAREA_RE.search(r.text)
+        existing_bio = (
+            html_mod.unescape(existing_bio_match.group(1)).strip()
+            if existing_bio_match else ""
+        )
+        if existing_bio and existing_bio != (args.bio or "").strip():
+            raise RuntimeError(
+                "REFUSING to overwrite existing bio without --force-overwrite. "
+                f"Current bio ({len(existing_bio)} chars) starts with: "
+                f'"{existing_bio[:160]}..."  '
+                f"Proposed bio ({len(args.bio)} chars) starts with: "
+                f'"{args.bio[:160]}..."  '
+                "If the user truly wants to replace it, re-run with --force-overwrite."
+            )
+
     # Parse the form's `action` so we hit the canonical /sources/<slug> URL.
-    action_match = re.search(r'<form\s+class="edit_source"[^>]+action="(/sources/[^"]+)"', r.text)
+    action_match = _FORM_ACTION_RE.search(r.text)
     canonical_path = action_match.group(1) if action_match else f"/sources/{source_ref}"
     post_url = f"{QWOTED_BASE}{canonical_path}"
     canonical_slug = canonical_path.rsplit("/", 1)[-1]
@@ -380,6 +484,10 @@ def _add_field_args(p: argparse.ArgumentParser) -> None:
                    help="Source does NOT want to be quoted by name.")
     p.add_argument("--hide-from-search-engines", action="store_true", default=None,
                    help="Hide profile from public + search engines.")
+    p.add_argument("--force-overwrite", action="store_true", default=False,
+                   help="Allow --action update to clobber a non-empty bio. "
+                        "Default is to REFUSE and surface the existing text so "
+                        "the agent can show it to the user for explicit approval.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -449,9 +557,21 @@ def main(argv: list[str] | None = None) -> int:
             if not first_pitchable.get("has_business_url"):
                 missing_for_seo.append("business_url")
             if not first_pitchable.get("bio"):
+                # This check now relies on the HTML-form supplement, not the
+                # JSON:API (which never exposes bio). If we still see empty,
+                # the bio is genuinely empty.
                 missing_for_seo.append("bio")
             if not first_pitchable.get("email"):
                 missing_for_seo.append("email")
+
+        # Human-readable preview so the agent doesn't have to re-probe the
+        # form to reason about the current bio.
+        bio_preview = ""
+        bio_length = 0
+        if first_pitchable and first_pitchable.get("bio"):
+            bio = first_pitchable["bio"]
+            bio_length = len(bio)
+            bio_preview = (bio[:240] + "...") if len(bio) > 240 else bio
 
         result_line({
             "status": "ok",
@@ -465,6 +585,8 @@ def main(argv: list[str] | None = None) -> int:
             "ready_to_pitch": bool(first_pitchable),
             "missing_for_seo": missing_for_seo,
             "seo_ready": bool(first_pitchable) and not missing_for_seo,
+            "bio_preview": bio_preview,
+            "bio_length": bio_length,
             "profile_state_path": str(profile_file()),
         })
         return 0
