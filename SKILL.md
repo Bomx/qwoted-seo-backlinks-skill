@@ -92,10 +92,29 @@ playwright install chromium
 python3 qwoted_login.py
 ```
 
-A Chromium window opens. **Tell the user to sign in to Qwoted in that
-window.** When they reach a logged-in page the script auto-detects it,
-saves cookies to `~/.qwoted/storage_state.json`, closes the browser and
-exits. The next login is one click because Chromium remembers them.
+**Important — this script is idempotent.** Before launching any browser
+it probes `~/.qwoted/storage_state.json` against Qwoted's API. If the
+cookies still work (which they usually do — Qwoted sessions last weeks),
+the script exits immediately with `RESULT: {"status": "logged_in", ...}`
+and **no browser opens at all**. That's the happy path — do not re-run
+with `--reset` or `--force` unless you have a reason.
+
+Only if no valid session exists will a Chromium window open. In that
+case: **tell the user to sign in IN THAT Chromium WINDOW** — not in
+their regular Chrome/Safari, because those are separate browsers with
+separate cookies, so signing in elsewhere will NOT save a session for
+this skill. When they reach a logged-in page the script auto-detects
+it, saves cookies to `~/.qwoted/storage_state.json`, closes the browser
+and exits. The next login is one click because Chromium remembers them.
+
+**If you are running inside an agent environment that can't show GUI
+windows** (some Codex or CI setups), the Chromium window will launch
+invisibly and the script will hang on the sign-in page. In that case:
+   1. STOP. Do not keep re-running. Tell the user to open their own
+      terminal on their own machine and run `python3 qwoted_login.py`
+      there once — they'll see the browser, sign in, and `storage_state.json`
+      will be written. After that, every future call from the agent will
+      use the already-valid cookies (no browser needed).
 
 If the user doesn't have a Qwoted account yet, send them to
 [qwoted.com](https://qwoted.com) to sign up first (free for sources).
@@ -446,9 +465,10 @@ source-request, so the server-side block is hard).
 
 ```bash
 # Setup
-python3 qwoted_login.py                                  # one-time
-python3 qwoted_login.py --reset                          # force re-login
-python3 qwoted_login.py --headless                       # only if profile already valid
+python3 qwoted_login.py                                  # idempotent: skips browser if session is still valid
+python3 qwoted_login.py --force                          # open browser even if session is valid (switch accounts)
+python3 qwoted_login.py --reset                          # wipe saved profile + cookie jar, start fresh
+python3 qwoted_login.py --headless                       # headless only works if an existing session is valid
 
 # Profile
 python3 qwoted_profile.py --action get                   # what entities exist?

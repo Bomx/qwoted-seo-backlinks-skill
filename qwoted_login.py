@@ -71,7 +71,10 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from qwoted_common import (  # noqa: E402
     QWOTED_BASE,
     USER_AGENT,
+    authed_get,
+    load_cookies,
     log,
+    looks_like_login_page,
     qwoted_home,
     result_line,
     session_file,
@@ -88,6 +91,34 @@ def _profile_dir() -> Path:
     return p
 
 
+def _existing_session_is_valid() -> bool:
+    """Fast, browser-free check: do the saved cookies still log us in?
+
+    Returns True if `~/.qwoted/storage_state.json` exists AND a single
+    authenticated GET to /source_requests comes back with the logged-in
+    page (not the sign-in form). This lets the script skip launching
+    Chromium entirely when the user already has a good session — which
+    is especially important when the script is invoked inside an agent
+    environment (Codex, Claude Code) where a GUI browser window may not
+    be visible to the human.
+    """
+    cookies = load_cookies()
+    if not cookies:
+        return False
+    try:
+        r = authed_get("/source_requests", cookies, timeout=15)
+    except Exception as e:
+        log(f"  pre-check: could not reach Qwoted ({e}); will open browser")
+        return False
+    if r.status_code != 200:
+        log(f"  pre-check: /source_requests returned HTTP {r.status_code}; will open browser")
+        return False
+    if looks_like_login_page(r.text):
+        log("  pre-check: saved cookies landed on sign-in page; will open browser")
+        return False
+    return True
+
+
 def _is_logged_in_url(url: str) -> bool:
     """We consider any path other than /users/sign_in (or /users/password
     for recovery flows) to mean the user is signed in."""
@@ -102,15 +133,35 @@ def _is_logged_in_url(url: str) -> bool:
     return True
 
 
-def run(headless: bool = False, reset: bool = False, timeout_s: int = DEFAULT_LOGIN_TIMEOUT_S) -> bool:
-    """Open Chromium, wait for the user to log in, save cookies. Returns True on success."""
+def run(
+    headless: bool = False,
+    reset: bool = False,
+    timeout_s: int = DEFAULT_LOGIN_TIMEOUT_S,
+    force: bool = False,
+) -> bool:
+    """Open Chromium, wait for the user to log in, save cookies. Returns True on success.
+
+    If a saved session already works against the Qwoted API, this returns
+    True immediately without opening a browser — unless `force=True`.
+    """
+    if not reset and not force and _existing_session_is_valid():
+        log(
+            "existing session is still valid — skipping browser. "
+            "Use --reset to force a fresh login, or --force to re-open the browser anyway."
+        )
+        return True
+
     sync_playwright = _import_playwright()
     profile_dir = _profile_dir()
 
     if reset and profile_dir.exists():
-        log(f"--reset: wiping {profile_dir}")
+        log(f"--reset: wiping {profile_dir} AND {session_file()}")
         shutil.rmtree(profile_dir)
         profile_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            session_file().unlink()
+        except FileNotFoundError:
+            pass
 
     log(
         "starting Qwoted login",
@@ -158,7 +209,11 @@ def run(headless: bool = False, reset: bool = False, timeout_s: int = DEFAULT_LO
 
             print("\n" + "=" * 70, file=sys.stderr)
             print(
-                "  >>> A Chromium window just opened. Please sign in to Qwoted.\n"
+                "  >>> A Chromium window just opened on your desktop.\n"
+                "      Please sign in to Qwoted IN THAT WINDOW (not in your\n"
+                "      regular Chrome/Safari — a different browser means\n"
+                "      different cookies and this script will never see your\n"
+                "      login).\n"
                 "      As soon as you're on a logged-in page, this script will\n"
                 "      detect it automatically and save your session.\n"
                 f"      (timeout: {timeout_s} seconds — re-run if you need more)",
@@ -167,15 +222,31 @@ def run(headless: bool = False, reset: bool = False, timeout_s: int = DEFAULT_LO
             print("=" * 70 + "\n", file=sys.stderr)
 
             deadline = time.time() + timeout_s
+            last_logged_url = None
+            next_status_log = time.time() + 5.0
             while time.time() < deadline:
                 try:
-                    if _is_logged_in_url(page.url):
+                    current = page.url
+                    if _is_logged_in_url(current):
                         break
+                    if time.time() >= next_status_log:
+                        if current != last_logged_url:
+                            log(f"  waiting... Chromium is currently on: {current}")
+                            last_logged_url = current
+                        else:
+                            log(f"  still waiting on: {current}  (sign in IN THIS WINDOW, not another browser)")
+                        next_status_log = time.time() + 5.0
                 except Exception:
                     pass
                 time.sleep(1.0)
             else:
-                log(f"ERROR: did not detect login within {timeout_s}s. Aborting.")
+                log(
+                    f"ERROR: did not detect login within {timeout_s}s. "
+                    f"Last URL seen in Chromium: {last_logged_url or 'unknown'}. "
+                    f"If you signed in to Qwoted in a different browser, that won't work — "
+                    f"you must sign in IN THE CHROMIUM WINDOW this script opened. "
+                    f"Re-run with --reset to start clean."
+                )
                 ctx.close()
                 return False
 
@@ -213,7 +284,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument(
         "--reset", action="store_true",
-        help="Wipe the saved Chromium profile before starting (forces a fresh login).",
+        help="Wipe the saved Chromium profile AND cookie jar before starting (forces a fresh login).",
+    )
+    p.add_argument(
+        "--force", action="store_true",
+        help="Open the browser even if the saved cookies still work. "
+             "Useful if you want to switch Qwoted accounts without --reset.",
     )
     p.add_argument(
         "--timeout", type=int, default=DEFAULT_LOGIN_TIMEOUT_S,
@@ -222,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
 
-    ok = run(headless=args.headless, reset=args.reset, timeout_s=args.timeout)
+    ok = run(headless=args.headless, reset=args.reset, timeout_s=args.timeout, force=args.force)
     if ok:
         result_line({"status": "logged_in", "cookie_jar": str(session_file())})
         return 0
