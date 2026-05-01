@@ -24,10 +24,19 @@ the next maintainer doesn't have to read the JS bundle):
               pitch[pitched_entities][][entity_type]=Source
           The indexed form `pitch[pitched_entities][0][entity_id]` also
           returns 500.
-  4. GET    /api/internal/jsonapi/pitches/<id>?include=pitched_entities,...
+       c) File attachments are real multipart file parts. The field
+          name is `pitch[attachments_attributes][][file_cloudinary][]`
+          and the value is the file bytes (filename + mime). The
+          server forwards the upload to Cloudinary on its side. A
+          base64-data-URI shape (e.g. `[][base64File]=data:...`) is
+          silently dropped — the request returns 200 but the JSON:API
+          readback shows attachments=[].
+  4. GET    /api/internal/jsonapi/pitches/<id>?include=pitched_entities,attachments,...
      readback to confirm an entity is attached. The JSON:API serializer
      does NOT expose `sent_at`/`pitched_at`; trust the synchronous
-     submit response for those.
+     submit response for those. `attachments` MUST be in the include
+     list — without it the relationship `data` array comes back empty
+     even when an attachment exists.
 
 Pitchable entity requirement
 ----------------------------
@@ -71,6 +80,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import re
 import sys
 from datetime import datetime, timezone
@@ -370,10 +380,39 @@ def _autosave(
     return r.json()
 
 
+def _read_attachment(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"--attachment not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"--attachment is not a file: {path}")
+    mime, _ = mimetypes.guess_type(str(path))
+    mime = mime or "application/octet-stream"
+    return {
+        "name": path.name,
+        "path": str(path),
+        "mime": mime,
+        "size_bytes": path.stat().st_size,
+    }
+
+
+def _read_attachments(paths: list[str] | None) -> list[dict[str, Any]]:
+    attachments = [_read_attachment(Path(p).expanduser()) for p in (paths or [])]
+    if attachments:
+        log(
+            "prepared pitch attachments",
+            attachments=[
+                {"name": a["name"], "mime": a["mime"], "size_bytes": a["size_bytes"]}
+                for a in attachments
+            ],
+        )
+    return attachments
+
+
 def _submit(
     cookies: dict[str, str], csrf: str, referer: str, pitch_id: int,
     source_request_id: int, text: str, subject: str | None,
     entities: list[dict[str, str]] | None,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """PUT /api/internal/pitches/:id — see module docstring for payload quirks."""
     url = f"{QWOTED_BASE}/api/internal/pitches/{pitch_id}"
@@ -388,14 +427,39 @@ def _submit(
         data.append(("pitch[pitched_entities][][entity_id]", str(ent["entity_id"])))
         data.append(("pitch[pitched_entities][][entity_type]", str(ent["entity_type"])))
 
-    log(f"submitting (PUT {url})", text_len=len(text), entities=entities or [])
+    # Attachments are sent as real multipart file parts under the field name
+    # `pitch[attachments_attributes][][file_cloudinary][]`. Qwoted forwards
+    # the upload to Cloudinary. The older base64-in-form-field shape is
+    # silently dropped (200 OK but no attachment is created server-side).
+    files: list[tuple[str, tuple[str | None, Any, str | None]]] = []
+    for att in attachments or []:
+        with open(att["path"], "rb") as f:
+            file_bytes = f.read()
+        files.append(
+            (
+                "pitch[attachments_attributes][][file_cloudinary][]",
+                (att["name"], file_bytes, att["mime"]),
+            )
+        )
+    if not files:
+        files.append(("_dummy", (None, "", None)))
+
+    log(
+        f"submitting (PUT {url})",
+        text_len=len(text),
+        entities=entities or [],
+        attachments=[
+            {"name": a["name"], "mime": a.get("mime"), "size_bytes": a.get("size_bytes")}
+            for a in (attachments or [])
+        ],
+    )
     r = requests.put(
         url,
         headers=_api_headers(csrf, referer),
         cookies=cookies,
         data=data,
-        files={"_dummy": (None, "")},
-        timeout=45,
+        files=files,
+        timeout=120,
     )
     log(f"  → {r.status_code}")
     if r.status_code not in (200, 201):
@@ -419,7 +483,7 @@ def _read_pitch(
 ) -> dict[str, Any]:
     url = (
         f"{QWOTED_BASE}/api/internal/jsonapi/pitches/{pitch_id}"
-        "?include=pitched_entities,sources,products,companies"
+        "?include=pitched_entities,sources,products,companies,attachments"
     )
     headers = {**_api_headers(csrf, referer), "Accept": "application/vnd.api+json"}
     r = requests.get(url, headers=headers, cookies=cookies, timeout=20)
@@ -445,9 +509,12 @@ def send_pitch(
     entity_id: str | None = None,
     entity_type: str | None = None,
     research_page_url: str | None = None,
+    attachments: list[str] | None = None,
 ) -> dict[str, Any]:
     if not pitch_text or not pitch_text.strip():
         raise ValueError("pitch_text is empty")
+
+    prepared_attachments = _read_attachments(attachments)
 
     cookies = require_cookies()
 
@@ -499,6 +566,11 @@ def send_pitch(
     )
 
     if not send:
+        if prepared_attachments:
+            log(
+                "DRY-RUN — attachments were prepared but not uploaded. "
+                "Pass --send to submit them."
+            )
         log("DRY-RUN — pitch saved as draft only. Pass --send to submit.")
         return {
             "status": "draft_only",
@@ -509,11 +581,13 @@ def send_pitch(
             "draft_response": draft,
             "autosave_response": autosave_resp,
             "sent_at": None,
+            "attachment_count": len(prepared_attachments),
         }
 
     # 5. Submit.
     submit_resp = _submit(
-        cookies, csrf, page_url, pitch_id, sri, pitch_text, subject, entities
+        cookies, csrf, page_url, pitch_id, sri, pitch_text, subject, entities,
+        attachments=prepared_attachments,
     )
 
     # 6. Verify via JSON:API readback.
@@ -531,6 +605,7 @@ def send_pitch(
         (rels.get(rn) or {}).get("data")
         for rn in ("pitched_entities", "sources", "products", "companies")
     )
+    attachments_data = (rels.get("attachments") or {}).get("data") or []
     readback_is_draft = str(attrs.get("draft")).lower() == "true"
 
     log(
@@ -539,6 +614,7 @@ def send_pitch(
         submit_draft=submit_is_draft,
         readback_draft=readback_is_draft,
         entities_attached=entities_attached,
+        attachment_count=len(attachments_data),
     )
 
     if submit_is_draft and readback_is_draft:
@@ -551,6 +627,13 @@ def send_pitch(
             "no entities are attached and no sent_at timestamp was returned. "
             "The Qwoted account is missing a Source/Company/Product. "
             "Run: python3 qwoted_profile.py --action create ..."
+        )
+    if prepared_attachments and len(attachments_data) < len(prepared_attachments):
+        raise RuntimeError(
+            "Pitch was sent, but attachment verification failed: "
+            f"expected {len(prepared_attachments)} attachment(s), "
+            f"read back {len(attachments_data)}. "
+            "Check the pitch in Qwoted before relying on the PDF citation."
         )
 
     sent_at = submit_sent_at or datetime.now(timezone.utc).isoformat()
@@ -624,6 +707,11 @@ def main(argv: list[str] | None = None) -> int:
                         "you've referenced from inside the pitch body. "
                         "Logged in ~/.qwoted/sent_pitches.json for "
                         "traceability across a PR push.")
+    p.add_argument("--attachment", action="append", default=None, metavar="PATH",
+                   help="Path to a file (e.g. a sourced PDF) to attach to the "
+                        "pitch. May be repeated to attach multiple files. "
+                        "Attachments are prepared during dry-run but only "
+                        "uploaded when --send is passed.")
     args = p.parse_args(argv)
 
     if args.source_request_id is None and not args.opportunity_id:
@@ -650,6 +738,7 @@ def main(argv: list[str] | None = None) -> int:
             entity_id=args.entity_id,
             entity_type=args.entity_type,
             research_page_url=args.research_page_url,
+            attachments=args.attachment,
         )
     except Exception as e:
         log(f"FAILED: {e}")
